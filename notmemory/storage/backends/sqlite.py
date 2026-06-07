@@ -1,7 +1,8 @@
 from __future__ import annotations
+
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import text
@@ -9,8 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from notmemory.core.exceptions import RollbackError
 from notmemory.memory.models import (
-    AuditTrail, Conflict, ConflictReport, CycleEvent,
-    MemoryEntry, RollbackResult, TrustLevel,
+    AuditTrail,
+    Conflict,
+    ConflictReport,
+    CycleEvent,
+    MemoryEntry,
+    RollbackResult,
+    TrustLevel,
 )
 from notmemory.storage.backends.base import BaseStorageBackend
 
@@ -58,17 +64,19 @@ def _sha256(data: str) -> str:
 
 
 def _entry_payload(entry: MemoryEntry) -> str:
-    return json.dumps({
-        "id": entry.id,
-        "bank_id": entry.bank_id,
-        "content": entry.content,
-        "transaction_id": entry.transaction_id,
-        "timestamp": entry.timestamp.isoformat(),
-    }, sort_keys=True)
+    return json.dumps(
+        {
+            "id": entry.id,
+            "bank_id": entry.bank_id,
+            "content": entry.content,
+            "transaction_id": entry.transaction_id,
+            "timestamp": entry.timestamp.isoformat(),
+        },
+        sort_keys=True,
+    )
 
 
 class SQLiteBackend(BaseStorageBackend):
-
     def __init__(self, db_url: str, *, hash_chaining: bool = True) -> None:
         self._db_url = db_url
         self._hash_chaining = hash_chaining
@@ -85,7 +93,11 @@ class SQLiteBackend(BaseStorageBackend):
 
     async def _get_last_hash(self, bank_id: str, session: AsyncSession) -> str | None:
         result = await session.execute(
-            text("SELECT hash FROM memory_entries WHERE bank_id = :b AND is_tombstoned = 0 ORDER BY timestamp DESC LIMIT 1"),
+            text(
+                "SELECT hash FROM memory_entries "
+                "WHERE bank_id = :b AND is_tombstoned = 0 "
+                "ORDER BY timestamp DESC LIMIT 1"
+            ),
             {"b": bank_id},
         )
         row = result.fetchone()
@@ -98,38 +110,54 @@ class SQLiteBackend(BaseStorageBackend):
                 if self._hash_chaining:
                     parent_hash = await self._get_last_hash(entry.bank_id, session)
                     payload = _entry_payload(entry) + (parent_hash or "")
-                    entry = entry.model_copy(update={"hash": _sha256(payload), "parent_hash": parent_hash})
+                    entry = entry.model_copy(
+                        update={"hash": _sha256(payload), "parent_hash": parent_hash}
+                    )
 
-                await session.execute(text("""
+                await session.execute(
+                    text("""
                     INSERT INTO memory_entries
                     (id, bank_id, content, context, source, trust_level, confidence,
                      transaction_id, hash, parent_hash, timestamp, is_tombstoned)
                     VALUES
                     (:id, :bank_id, :content, :context, :source, :trust_level, :confidence,
                      :transaction_id, :hash, :parent_hash, :timestamp, 0)
-                """), {
-                    "id": entry.id,
-                    "bank_id": entry.bank_id,
-                    "content": json.dumps(entry.content),
-                    "context": entry.context,
-                    "source": entry.source,
-                    "trust_level": entry.trust_level,
-                    "confidence": entry.confidence,
-                    "transaction_id": entry.transaction_id,
-                    "hash": entry.hash,
-                    "parent_hash": entry.parent_hash,
-                    "timestamp": entry.timestamp.isoformat(),
-                })
+                """),
+                    {
+                        "id": entry.id,
+                        "bank_id": entry.bank_id,
+                        "content": json.dumps(entry.content),
+                        "context": entry.context,
+                        "source": entry.source,
+                        "trust_level": entry.trust_level,
+                        "confidence": entry.confidence,
+                        "transaction_id": entry.transaction_id,
+                        "hash": entry.hash,
+                        "parent_hash": entry.parent_hash,
+                        "timestamp": entry.timestamp.isoformat(),
+                    },
+                )
 
                 await session.execute(
-                    text("INSERT INTO memory_fts(id, bank_id, content) VALUES (:id, :bank_id, :content)"),
-                    {"id": entry.id, "bank_id": entry.bank_id, "content": json.dumps(entry.content)},
+                    text(
+                        "INSERT INTO memory_fts(id, bank_id, content) "
+                        "VALUES (:id, :bank_id, :content)"
+                    ),
+                    {
+                        "id": entry.id,
+                        "bank_id": entry.bank_id,
+                        "content": json.dumps(entry.content),
+                    },
                 )
         return entry
 
     async def read_entries(
-        self, bank_id: str, *, trust_level: TrustLevel | None = None,
-        limit: int = 100, offset: int = 0,
+        self,
+        bank_id: str,
+        *,
+        trust_level: TrustLevel | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> list[MemoryEntry]:
         async with self._session_factory() as session:
             params: dict[str, Any] = {"bank_id": bank_id, "limit": limit, "offset": offset}
@@ -138,12 +166,17 @@ class SQLiteBackend(BaseStorageBackend):
                 where += " AND trust_level = :trust_level"
                 params["trust_level"] = trust_level
             result = await session.execute(
-                text(f"SELECT * FROM memory_entries WHERE {where} ORDER BY timestamp DESC LIMIT :limit OFFSET :offset"),
+                text(
+                    f"SELECT * FROM memory_entries WHERE {where} "
+                    "ORDER BY timestamp DESC LIMIT :limit OFFSET :offset"
+                ),
                 params,
             )
             return [self._row_to_entry(r) for r in result.mappings()]
 
-    async def keyword_search(self, bank_id: str, query: str, *, limit: int = 20) -> list[MemoryEntry]:
+    async def keyword_search(
+        self, bank_id: str, query: str, *, limit: int = 20
+    ) -> list[MemoryEntry]:
         async with self._session_factory() as session:
             result = await session.execute(
                 text("""SELECT e.* FROM memory_entries e
@@ -158,12 +191,17 @@ class SQLiteBackend(BaseStorageBackend):
         async with self._session_factory() as session:
             async with session.begin():
                 result = await session.execute(
-                    text("SELECT COUNT(*) FROM memory_entries WHERE transaction_id = :txn AND is_tombstoned = 0"),
+                    text(
+                        "SELECT COUNT(*) FROM memory_entries "
+                        "WHERE transaction_id = :txn AND is_tombstoned = 0"
+                    ),
                     {"txn": transaction_id},
                 )
                 count = result.scalar() or 0
                 if count == 0:
-                    raise RollbackError(f"Transaction '{transaction_id}' not found or already rolled back.")
+                    raise RollbackError(
+                        f"Transaction '{transaction_id}' not found or already rolled back."
+                    )
                 await session.execute(
                     text("UPDATE memory_entries SET is_tombstoned = 1 WHERE transaction_id = :txn"),
                     {"txn": transaction_id},
@@ -173,28 +211,33 @@ class SQLiteBackend(BaseStorageBackend):
     async def write_cycle_event(self, event: CycleEvent) -> CycleEvent:
         async with self._session_factory() as session:
             async with session.begin():
-                await session.execute(text("""
+                await session.execute(
+                    text("""
                     INSERT INTO cycle_events
                     (event_id, cycle_id, parent_event_id, event_type, model,
                      tokens_in, tokens_out, elapsed_ms, output, timestamp)
                     VALUES
                     (:event_id, :cycle_id, :parent_event_id, :event_type, :model,
                      :tokens_in, :tokens_out, :elapsed_ms, :output, :timestamp)
-                """), {
-                    "event_id": event.event_id,
-                    "cycle_id": event.cycle_id,
-                    "parent_event_id": event.parent_event_id,
-                    "event_type": event.event_type,
-                    "model": event.model,
-                    "tokens_in": event.tokens_in,
-                    "tokens_out": event.tokens_out,
-                    "elapsed_ms": event.elapsed_ms,
-                    "output": json.dumps(event.output) if event.output else None,
-                    "timestamp": event.timestamp.isoformat(),
-                })
+                """),
+                    {
+                        "event_id": event.event_id,
+                        "cycle_id": event.cycle_id,
+                        "parent_event_id": event.parent_event_id,
+                        "event_type": event.event_type,
+                        "model": event.model,
+                        "tokens_in": event.tokens_in,
+                        "tokens_out": event.tokens_out,
+                        "elapsed_ms": event.elapsed_ms,
+                        "output": json.dumps(event.output) if event.output else None,
+                        "timestamp": event.timestamp.isoformat(),
+                    },
+                )
         return event
 
-    async def get_audit_trail(self, cycle_id: str, *, event_types: list[str] | None = None) -> AuditTrail:
+    async def get_audit_trail(
+        self, cycle_id: str, *, event_types: list[str] | None = None
+    ) -> AuditTrail:
         async with self._session_factory() as session:
             params: dict[str, Any] = {"cycle_id": cycle_id}
             where = "cycle_id = :cycle_id"
@@ -218,20 +261,24 @@ class SQLiteBackend(BaseStorageBackend):
             ended_at=events[-1].timestamp if events else None,
         )
 
-    async def detect_conflicts(self, bank_id: str, *, trust_level: TrustLevel | None = None) -> ConflictReport:
+    async def detect_conflicts(
+        self, bank_id: str, *, trust_level: TrustLevel | None = None
+    ) -> ConflictReport:
         entries = await self.read_entries(bank_id, trust_level=trust_level, limit=500)
         conflicts: list[Conflict] = []
         seen: dict[str, str] = {}
         for entry in entries:
             key = json.dumps(entry.content, sort_keys=True)
             if key in seen:
-                conflicts.append(Conflict(
-                    conflict_type="duplicate",
-                    entry_a_id=seen[key],
-                    entry_b_id=entry.id,
-                    description="Identical content stored twice",
-                    severity=0.3,
-                ))
+                conflicts.append(
+                    Conflict(
+                        conflict_type="duplicate",
+                        entry_a_id=seen[key],
+                        entry_b_id=entry.id,
+                        description="Identical content stored twice",
+                        severity=0.3,
+                    )
+                )
             else:
                 seen[key] = entry.id
         penalty = sum(c.severity * 20 for c in conflicts)
@@ -244,14 +291,20 @@ class SQLiteBackend(BaseStorageBackend):
     async def verify_hash_chain(self, bank_id: str) -> bool:
         async with self._session_factory() as session:
             result = await session.execute(
-                text("SELECT id, content, transaction_id, timestamp, hash, parent_hash FROM memory_entries WHERE bank_id = :b AND is_tombstoned = 0 ORDER BY timestamp ASC"),
+                text(
+                    "SELECT id, content, transaction_id, timestamp, hash, parent_hash "
+                    "FROM memory_entries "
+                    "WHERE bank_id = :b AND is_tombstoned = 0 "
+                    "ORDER BY timestamp ASC"
+                ),
                 {"b": bank_id},
             )
             rows = list(result.mappings())
         prev_hash: str | None = None
         for row in rows:
             entry = MemoryEntry(
-                id=row["id"], bank_id=bank_id,
+                id=row["id"],
+                bank_id=bank_id,
                 content=json.loads(row["content"]),
                 transaction_id=row["transaction_id"],
                 timestamp=datetime.fromisoformat(row["timestamp"]),
@@ -271,12 +324,17 @@ class SQLiteBackend(BaseStorageBackend):
                     for i, eid in enumerate(entry_ids):
                         params[f"id{i}"] = eid
                     result = await session.execute(
-                        text(f"UPDATE memory_entries SET is_tombstoned = 1 WHERE bank_id = :bank_id AND id IN ({placeholders})"),
+                        text(
+                            "UPDATE memory_entries SET is_tombstoned = 1 "
+                            f"WHERE bank_id = :bank_id AND id IN ({placeholders})"
+                        ),
                         params,
                     )
                 else:
                     result = await session.execute(
-                        text("UPDATE memory_entries SET is_tombstoned = 1 WHERE bank_id = :bank_id"),
+                        text(
+                            "UPDATE memory_entries SET is_tombstoned = 1 WHERE bank_id = :bank_id"
+                        ),
                         {"bank_id": bank_id},
                     )
                 return result.rowcount
@@ -284,12 +342,16 @@ class SQLiteBackend(BaseStorageBackend):
     @staticmethod
     def _row_to_entry(row: Any) -> MemoryEntry:
         return MemoryEntry(
-            id=row["id"], bank_id=row["bank_id"],
+            id=row["id"],
+            bank_id=row["bank_id"],
             content=json.loads(row["content"]),
-            context=row["context"], source=row["source"],
-            trust_level=row["trust_level"], confidence=row["confidence"],
+            context=row["context"],
+            source=row["source"],
+            trust_level=row["trust_level"],
+            confidence=row["confidence"],
             transaction_id=row["transaction_id"],
-            hash=row["hash"], parent_hash=row["parent_hash"],
+            hash=row["hash"],
+            parent_hash=row["parent_hash"],
             timestamp=datetime.fromisoformat(row["timestamp"]),
             is_tombstoned=bool(row["is_tombstoned"]),
         )
@@ -297,10 +359,13 @@ class SQLiteBackend(BaseStorageBackend):
     @staticmethod
     def _row_to_event(row: Any) -> CycleEvent:
         return CycleEvent(
-            event_id=row["event_id"], cycle_id=row["cycle_id"],
+            event_id=row["event_id"],
+            cycle_id=row["cycle_id"],
             parent_event_id=row["parent_event_id"],
-            event_type=row["event_type"], model=row["model"],
-            tokens_in=row["tokens_in"], tokens_out=row["tokens_out"],
+            event_type=row["event_type"],
+            model=row["model"],
+            tokens_in=row["tokens_in"],
+            tokens_out=row["tokens_out"],
             elapsed_ms=row["elapsed_ms"],
             output=json.loads(row["output"]) if row["output"] else None,
             timestamp=datetime.fromisoformat(row["timestamp"]),

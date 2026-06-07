@@ -1,23 +1,28 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Type
+from typing import Any
 
 from pydantic import BaseModel
 
 from notmemory.core.config import MemoryConfig
 from notmemory.core.exceptions import ValidationError
 from notmemory.memory.models import (
-    AuditTrail, ConflictReport, CycleEvent, CycleEventType,
-    MemoryEntry, RecallResult, RecallStrategy,
-    RollbackResult, TrustLevel,
+    AuditTrail,
+    ConflictReport,
+    CycleEvent,
+    CycleEventType,
+    MemoryEntry,
+    RecallResult,
+    RecallStrategy,
+    RollbackResult,
+    TrustLevel,
 )
 from notmemory.storage import create_backend
 from notmemory.storage.backends.base import BaseStorageBackend
 
 
 class AgentMemory:
-
     def __init__(self, config: MemoryConfig | None = None) -> None:
         self._config = config or MemoryConfig()
         self._backend: BaseStorageBackend = create_backend(self._config)
@@ -31,7 +36,7 @@ class AgentMemory:
         await self._backend.close()
         self._initialized = False
 
-    async def __aenter__(self) -> "AgentMemory":
+    async def __aenter__(self) -> AgentMemory:
         await self.initialize()
         return self
 
@@ -52,7 +57,7 @@ class AgentMemory:
         content: dict[str, Any] | BaseModel,
         context: str | None = None,
         source: str | None = None,
-        schema: Type[BaseModel] | None = None,
+        schema: type[BaseModel] | None = None,
         trust_level: TrustLevel = "active",
         confidence: float = 1.0,
     ) -> MemoryEntry:
@@ -105,7 +110,9 @@ class AgentMemory:
             if strategy in ("keyword", "hybrid") and query:
                 found = await self._backend.keyword_search(bank_id, query, limit=limit)
             else:
-                found = await self._backend.read_entries(bank_id, trust_level=trust_level, limit=limit)
+                found = await self._backend.read_entries(
+                    bank_id, trust_level=trust_level, limit=limit
+                )
             for e in found:
                 if e.id not in seen_ids:
                     entries.append(e)

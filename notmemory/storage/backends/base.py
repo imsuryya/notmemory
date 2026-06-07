@@ -1,13 +1,18 @@
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
+
 from notmemory.memory.models import (
-    AuditTrail, ConflictReport, CycleEvent,
-    MemoryEntry, RollbackResult, TrustLevel,
+    AuditTrail,
+    ConflictReport,
+    CycleEvent,
+    MemoryEntry,
+    RollbackResult,
+    TrustLevel,
 )
 
 
 class BaseStorageBackend(ABC):
-
     @abstractmethod
     async def initialize(self) -> None:
         pass

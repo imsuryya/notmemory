@@ -1,12 +1,10 @@
 import asyncio
+
 from notmemory import AgentMemory, MemoryConfig
 
 
 async def main() -> None:
-    async with AgentMemory(MemoryConfig(
-        db_url="sqlite+aiosqlite:///./quickstart.db"
-    )) as memory:
-
+    async with AgentMemory(MemoryConfig(db_url="sqlite+aiosqlite:///./quickstart.db")) as memory:
         print("=== 1. RETAIN ===")
         entry = await memory.retain(
             bank_id="user",
@@ -21,7 +19,7 @@ async def main() -> None:
             print(f"  {e.content}")
 
         print("\n=== 3. AUDIT TRAIL ===")
-        evt = await memory.log_cycle_event(
+        await memory.log_cycle_event(
             cycle_id="cyc-001",
             event_type="llm-call",
             model="claude-3-5-sonnet",

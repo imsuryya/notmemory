@@ -1,12 +1,16 @@
 from __future__ import annotations
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
+
 from pydantic import BaseModel, Field
 
 TrustLevel = Literal["hypothesis", "active", "validated", "deprecated"]
 RecallStrategy = Literal["semantic", "keyword", "graph", "temporal", "hybrid"]
-CycleEventType = Literal["llm-call", "tool-execution", "gate-decision", "memory-write", "memory-read"]
+CycleEventType = Literal[
+    "llm-call", "tool-execution", "gate-decision", "memory-write", "memory-read"
+]
 ConflictType = Literal["contradiction", "staleness", "duplicate", "schema_mismatch"]
 
 
@@ -21,7 +25,7 @@ class MemoryEntry(BaseModel):
     transaction_id: str = Field(default_factory=lambda: f"txn-{uuid.uuid4().hex[:12]}")
     hash: str | None = None
     parent_hash: str | None = None
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     is_tombstoned: bool = False
 
 
@@ -46,7 +50,7 @@ class ConflictReport(BaseModel):
     bank_id: str
     health_score: float
     conflicts: list[Conflict] = Field(default_factory=list)
-    checked_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    checked_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class CycleEvent(BaseModel):
@@ -59,7 +63,7 @@ class CycleEvent(BaseModel):
     tokens_out: int = 0
     elapsed_ms: float = 0.0
     output: dict[str, Any] | None = None
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class AuditTrail(BaseModel):
@@ -74,5 +78,5 @@ class AuditTrail(BaseModel):
 class RollbackResult(BaseModel):
     transaction_id: str
     entries_reversed: int
-    rolled_back_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    rolled_back_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     success: bool = True

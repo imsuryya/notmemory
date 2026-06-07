@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from typing import Literal
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -27,7 +29,7 @@ class MemoryConfig(BaseModel):
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
 
     @model_validator(mode="after")
-    def _validate(self) -> "MemoryConfig":
+    def _validate(self) -> MemoryConfig:
         if self.storage == "postgres" and "sqlite" in self.db_url:
             raise ValueError("storage=postgres but db_url looks like SQLite.")
         return self
