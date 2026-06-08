@@ -23,6 +23,9 @@ langchain = [
 mcp = [
     "mcp>=1.0",
 ]
+mem0      = [
+    "mem0ai>=0.1.0",
+]
 postgres = [
     "asyncpg>=0.29",
     "psycopg[binary]>=3.1",
